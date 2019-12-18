@@ -1,0 +1,65 @@
+---
+- name: 如果主机不在deployment_host 组中失败
+  fail:
+    msg: "The host {{ inventory_hostname }} must be in deployment_host."
+  when: inventory_hostname not in groups['deployment_host']
+  tags:
+    - always
+
+
+- name: 如果不提供root 密码 失败
+  fail:
+    msg: |
+      在应用之前，请设置mysql_root_password变量
+  when: (mysql_root_password is undefined) or (mysql_root_password is none)
+  tags:
+    - always
+
+- name: 如果主机数量大于1 失败
+  fail:
+    msg: "在主机组deployment_host中的主机不等于1"
+  when: not install_mysql_host | bool
+
+
+
+- name: 删除冲突的包
+  shell: |
+    exit_code=0
+    for pkg in {{ mysql_remove_packages | join(' ') }}; do
+      if rpm --query --quiet ${pkg}; then
+        rpm -ev --nodeps ${pkg}
+        exit_code=2
+      fi
+    done
+    exit ${exit_code}
+  register: _remove_existing_mariadb_packages
+  changed_when: _remove_existing_mariadb_packages.rc == 2
+  failed_when: _remove_existing_mariadb_packages.rc not in [0, 2]
+  args:
+    warn: no
+    executable: /bin/bash
+
+
+- include_tasks: "mysql_install_local.yml"
+  when:
+     - ansible_pkg_mgr == 'yum'
+     - install_mysql_method == 'local'
+
+
+- name: Flush handlers
+  meta: flush_handlers
+
+
+- name: 更新用户密码
+  shell: |
+    mysql --user='root' --password='{{ mysql_root_password }}' --connect-expired-password -e  "ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ mysql_root_password }}';" 2>/dev/null
+  args:
+    executable: /bin/bash
+  register: existing_dir_cleanup
+  changed_when: existing_dir_cleanup.rc == 2
+  failed_when: existing_dir_cleanup.rc not in [0,2]
+
+
+- include_tasks: mysql_setup.yml
+  tags:
+    - mysql_server-config

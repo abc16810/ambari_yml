@@ -1,0 +1,80 @@
+---
+
+#- name: 拷贝到/tmp/目录下
+#  copy: 
+#     src: "{{ item }}" 
+#     dest: "/tmp/{{ item }}"
+#  with_items: "{{ mysql_install_local_packages }}"
+
+- name: 本地安装mysql
+  yum:
+    pkg: "/tmp/{{ item | basename }}"
+    state: present
+  with_items: "{{ mysql_install_local_packages }}"
+  register: install_packages
+  until: install_packages is success
+  retries: 5
+  delay: 2
+
+- name: 确保mysql_logs 目录存在及权限正确
+  shell: |
+    if [ -h "/var/log/mysql_logs" ]; then
+      chown -h mysql "/var/log/mysql_logs"
+      chown -R mysql "$(readlink /var/log/mysql_logs)"
+    else
+      exit 1
+    fi
+  register: log_dir
+  failed_when: false
+  changed_when: log_dir.rc == 0
+
+- name: 创建mysql logs 目录
+  file:
+    path: "/var/log/mysql_logs"
+    state: "directory"
+    owner: "mysql"
+    group: "mysql"
+    mode: "02755"
+  when:
+    - log_dir.rc == 1
+
+
+- name: 配置mysql 
+  template:
+    src: my.conf.j2
+    dest: /etc/my.cnf
+    owner: "root"
+    group: "root"
+    mode: 0644
+    backup: yes
+  notify: Restart mysql
+
+
+- name: Reload systemd 服务文件
+  systemd:
+    daemon_reload: yes
+
+
+- name: 创建mysql initial secure 工具
+  template:
+    src: "mysql_secure_node.j2"
+    dest: "/usr/local/bin/mysql_secure_node"
+    mode: "0750"
+  when:
+    - ansible_pkg_mgr != "apt"
+
+- name: 运行mysql 安全脚本
+  command: "/usr/local/bin/mysql_secure_node"
+  args:
+    creates: "/var/lib/mysql/hp_default_secured"
+    warn: no
+  when:
+    - ansible_pkg_mgr != "apt"
+
+- name: 删除skip-grant-tables
+  lineinfile:
+      dest: /etc/my.cnf
+      regexp: '^skip-grant-tables'
+      state: absent
+  notify: Restart mysql
+

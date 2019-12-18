@@ -1,0 +1,72 @@
+---
+- name: 主机基本设置
+  hosts: all
+  gather_facts: "{{ set_gather_facts | default(True) }}"
+  user: root
+  pre_tasks:
+    - name: 检测支持的操作系统（目前是基于centos7 安装配置其它系统咱不支持）
+      assert:
+        that:
+          - ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
+        msg: "系统仅支持 CentOS 7 (WIP)"
+
+    - name: 检测内核版本（最新的内核）
+      fail:
+        msg: >
+          错误的内核版本
+          [ {{ ansible_kernel }} < {{ hadoop_host_required_kernel }} ]
+          在继续之前解决这个问题（yum update 升级内核）.
+      when:
+         - ansible_kernel is version_compare(hadoop_host_required_kernel, '<')
+         - inventory_hostname in groups['cluster_host']
+    - debug:
+        msg: "{{ install_mysql_host | bool }}"
+
+  roles:
+    - role: "hadoop_hosts"
+  vars_files: []
+  tags:
+    - set-host
+
+  post_tasks:
+    - name: 上传jdk
+      copy: 
+        src: "{{ jdk_file }}" 
+        dest: /tmp
+
+    - name: 安装jdk1.8
+      yum: 
+        name: "/tmp/{{ jdk_file }}" 
+        state: present
+
+    - name: 配置JAVA_HOME
+      template:
+        src: jdk.sh
+        dest: /etc/profile.d/jdk.sh 
+        owner: "root"
+        group: "root"
+        mode: "0644"
+        backup: yes
+
+    - name: 启动系统
+      block:
+         - name: 重启系统
+           shell: sleep 2 && shutdown -r now
+           become: yes
+           async: 1
+           poll: 0
+
+         - name: waiting 3 minutes for the machines to come back
+           local_action:
+             module: wait_for
+             host: "{{ ansible_default_ipv4.address }}"
+             port: 22
+             state: started
+             delay: 30
+             timeout: 180
+
+         - name: uptime
+           command: uptime
+
+#- name: Flush handlers
+#  meta: flush_handlers

@@ -1,0 +1,61 @@
+---
+
+- name: 确保用户生成 ssh key 
+  user:
+    name: "{{ exce_ambari_user_name | default('root') }}"
+    home: "{{ exce_ambari_user_home }}"
+    generate_ssh_key: "yes"
+    ssh_key_bits: 2048
+    ssh_key_file: ".ssh/id_rsa"
+
+
+- name: 创建用户SSH配置文件ssh/config
+  copy:
+    src: "ssh_config"
+    dest: "{{ exce_ambari_user_home }}/.ssh/config"
+    owner: "{{ exce_ambari_user_name }}"
+    group: "{{ exce_ambari_user_name }}"
+    mode: "0644"
+
+- name: 获取公钥内容并存储为var
+  slurp:
+    src: "{{ exce_ambari_user_home }}/.ssh/id_rsa.pub"
+  register: h_pub
+  changed_when: false
+
+- name: 为每个主机注册fact pub key
+  set_fact:
+     hadoop_pubkey: "{{ h_pub.content }}"
+
+- name: 本地生成脚本文件 authorized keys
+  template:
+    src: "key-insert.sh.j2"
+    dest: "/var/tmp/hadoop-key.sh"
+    mode: "0755"
+  delegate_to: localhost
+  vars:
+    ansible_python_interpreter: "/usr/bin/python"
+
+
+- name: 复制模板化的 authorized keys 文件脚本
+  copy:
+    src: "/var/tmp/hadoop-key.sh"
+    dest: "/usr/local/bin/hadoop-key.sh"
+    mode: "0755"
+
+- name: 运行 authorized keys 脚本文件
+  command: "/usr/local/bin/hadoop-key.sh"
+  register: key_create
+  changed_when: key_create.rc == 3
+  failed_when:
+    - key_create.rc != 3
+    - key_create.rc != 0
+
+
+- name: 配置sudoer 文件 /suders.d/xx_sudoers
+  template:
+    src: "sudoers.j2"
+    dest: "/etc/sudoers.d/{{ exce_ambari_user_name }}_sudoers"
+    mode: "0440"
+    owner: "root"
+    group: "root"

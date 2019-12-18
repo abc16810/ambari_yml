@@ -1,0 +1,22 @@
+---
+# handlers file for hadoop_hosts
+#
+- name: reboot system
+  block:
+    - name: 重启系统
+      shell: sleep 2 && shutdown -r now
+      become: yes
+      async: 1
+      poll: 0
+
+    - name: waiting 3 minutes for the machines to come back
+      local_action:
+        module: wait_for
+        host: "{{ ansible_default_ipv4.address }}"
+        port: 22
+        state: started
+        delay: 30
+        timeout: 180
+
+    - name: uptime
+      command: uptime

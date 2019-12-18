@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+set -ev
+
+STOP_MYSQL=false
+
+if ! systemctl status mysqld; then
+  STOP_MYSQL=true
+  systemctl set-environment MYSQLD_OPTS="--bind-address=127.0.0.1"
+  systemctl start mysqld
+  sleep 10
+  systemctl status mysqld
+else
+  STOP_MYSQL=true
+  systemctl set-environment MYSQLD_OPTS="--bind-address=127.0.0.1"
+  systemctl restart mysqld
+  sleep 3
+fi
+
+mysql -u root -h localhost -e "DELETE FROM mysql.user WHERE user='';"
+mysql -u root -h localhost -e "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('%', 'localhost', '127.0.0.1', '::1');"
+mysql -u root -h localhost -e "DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%';"
+mysql -u root -h localhost -e "update mysql.user set authentication_string=password('{{ mysql_root_password }}') where user='{{ mysql_root_user }}' and Host = 'localhost';"
+mysql -u root -h localhost -e "update mysql.user set authentication_string=password('{{ mysql_root_password }}') where user='{{ mysql_root_user }}' and Host = '%';"
+mysql -u root -h localhost -e "update mysql.user set authentication_string=password('{{ mysql_root_password }}') where user='{{ mysql_root_user }}' and Host = '127.0.0.1';"
+mysql -u root -h localhost -e "update mysql.user set authentication_string=password('{{ mysql_root_password }}') where user='{{ mysql_root_user }}' and Host = '::1';"
+mysql -u root -h localhost -e "FLUSH PRIVILEGES;"
+
+
+if [ "${STOP_MYSQL}" = true ]; then
+  systemctl stop mysqld
+fi
+
+# Create a marker file to ensure this script is not run again
+systemctl unset-environment MYSQLD_OPTS
+touch "/var/lib/mysql/hp_default_secured"

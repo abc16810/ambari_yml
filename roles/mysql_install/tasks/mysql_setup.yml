@@ -1,0 +1,22 @@
+---
+- name: 创建mysql用户
+  mysql_user:
+    login_user: "{{ mysql_root_user }}"
+    login_password: "{{ mysql_root_password }}"
+    login_host: "localhost"
+    name: "{{ item.name }}"
+    host: "{{ item.host }}"
+    password: "{{ item.password }}"
+    priv: "{{ item.priv }}"
+    state: "{{ item.state }}"
+  with_items:
+    - name: "{{ mysql_root_user }}"
+      host: "%"
+      password: "{{ mysql_root_password }}"
+      priv: "*.*:ALL,GRANT"
+      state: present
+    - name: "{{ mysql_root_user }}"
+      host: "localhost"
+      password: "{{ mysql_root_password }}"
+      priv: "*.*:ALL"
+      state: present

@@ -1,0 +1,6 @@
+---
+- name: 配置本地的 ambari repo 
+  template:
+    src: "{{ item.repo }}.repo.j2"
+    dest: "/etc/yum.repos.d/{{ item.repo }}.repo"
+  with_items: "{{ hadoop_local_packges }}"

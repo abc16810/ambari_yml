@@ -1,0 +1,64 @@
+---
+- name: 主机基本设置
+  hosts: deployment_host
+  gather_facts: "{{ set_gather_facts | default(True) }}"
+  user: root
+  pre_tasks:
+    - name: 检测支持的操作系统（目前是基于centos7 安装配置其它系统咱不支持）
+      assert:
+        that:
+          - ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
+        msg: "系统仅支持 CentOS 7 (WIP)"
+
+    - name: 检测内核版本（最新的内核）
+      fail:
+        msg: >
+          错误的内核版本
+          [ {{ ansible_kernel }} < {{ hadoop_host_required_kernel }} ]
+          在继续之前解决这个问题（yum update 升级内核）.
+      when:
+         - ansible_kernel is version_compare(hadoop_host_required_kernel, '<')
+         - inventory_hostname in groups['cluster_host']
+
+  roles:
+    - role: "mysql_install"
+  vars_files: []
+  tags:
+    - mysql-install
+
+
+  post_tasks:
+
+     - name: 确保mysql 启动
+       service:
+         name: mysqld
+         state: started
+       tags:
+         - create_db
+
+     - name: 创建必要的数据库
+       mysql_db:
+          login_user: "{{ mysql_root_user }}"
+          login_password: "{{ mysql_root_password }}"
+          login_host: "{{ hostvars[ansible_hostname].ansible_all_ipv4_addresses[0] | default('localhost') }}"
+          name: "{{ item.key }}"
+          state: "present"
+       with_dict: "{{ database_list }}"
+       #no_log: True
+       tags:
+         - create_db
+
+     - name: Grant access to the DB for the service
+       mysql_user:
+          login_user: "{{ mysql_root_user }}"
+          login_password: "{{ mysql_root_password }}"
+          login_host: "{{ hostvars[ansible_hostname].ansible_all_ipv4_addresses[0] | default('localhost') }}"
+          name: "{{ item.value.user }}"
+          password: "{{ item.value.passwd }}"
+          host: "{{ item.value.host }}"
+          state: "present"
+          priv: "{{ item.key }}.*:ALL,GRANT"
+       with_dict: "{{ database_list }}"
+       tags:
+         - create_db
+         

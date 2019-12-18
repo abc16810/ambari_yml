@@ -1,0 +1,10 @@
+#  {{ ansible_managed }}
+#
+[ambari]
+name={{ item.repo }} Version - ambari-2.6.2.2
+baseurl=http://{{ inventory_hostname }}/{{ item.repo }}/centos7/2.6.2.2-1
+gpgcheck=0
+gpgkey=http://{{ inventory_hostname }}/{{ item.repo }}/centos7/2.6.2.2-1/RPM-GPG-KEY/RPM-GPG-KEY-Jenkins
+enabled=1
+priority=1
+

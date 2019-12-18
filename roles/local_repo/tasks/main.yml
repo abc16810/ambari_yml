@@ -1,0 +1,60 @@
+---
+# tasks file for local_repo
+- name: 安装必要的包
+  package:
+    name: "{{ web_server_packges }}"
+    state: "latest"
+  register: install_packages
+  until: install_packages is success
+  retries: 5
+
+- name: 移除默认的 apache site
+  file:
+    path: "{{ item }}"
+    state: "absent"
+  with_items: "{{ apache_default_sites }}"
+  notify:
+    - Restart web server
+
+- name: Ensure Apache ServerName
+  lineinfile:
+    dest: "/etc/httpd/conf/httpd.conf"
+    line: "ServerName {{ ansible_hostname }}"
+  notify:
+    - Restart web server
+
+- name: 确保目录存在
+  file:
+    path: "/var/www/html/{{ item.dest }}"
+    state: directory
+  with_items:
+    - "{{ hadoop_local_packges }}"
+
+- name: 确保解压的文件存在
+  file:
+    path: "/tmp/{{ item.src }}"
+  with_items: "{{ hadoop_local_packges }}"
+
+- name: 解压到/var/www/html
+  unarchive: 
+       src: "/tmp/{{ item.src }}"
+       remote_src: yes
+       dest: "/var/www/html/{{ item.dest }}"
+  with_items: "{{ hadoop_local_packges }}"
+  tags:
+    - unarchive-files
+
+- name: 设置目录权限
+  file:
+    path: "/var/www/html/{{ item.repo }}"
+    state: directory
+    recurse: yes
+    owner: root
+    group: root
+  with_items:
+    - "{{ hadoop_local_packges }}"
+
+- name: 配置本地 repo
+  include_tasks: conf_repo.yml
+  tags:
+    conf-repo

@@ -1,0 +1,168 @@
+---
+- name: 获取系统变量
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_version | lower }}.yml"
+    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version | lower }}.yml"
+    - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version | lower }}.yml"
+    - "{{ ansible_distribution | lower }}.yml"
+    - "{{ ansible_os_family | lower }}.yml"
+  tags:
+    - always
+
+
+- name: 设置主机名
+  hostname:
+     name: "{{ item|replace('_', '-') }}"
+  with_items: "{{ groups['all'] }}"
+  when: 
+    - hostvars[item].ansible_hostname != item
+    - ansible_default_ipv4.address == hostvars[item].ansible_default_ipv4.address
+    - set_hosts | bool
+  tags:
+    - set-hosts
+
+- name: 设置FQDN /etc/sysconfig/network
+  lineinfile: 
+      dest: /etc/sysconfig/network 
+      regexp: '^NETWORKING' 
+      line: 'NETWORKING=yes'
+
+
+# 在所有的节点上配置hosts文件
+- name: 配置/etc/hosts 文件
+  include_tasks: set_update_hosts_file.yml
+  when:
+    - set_host_manage_hosts_file | bool
+  tags:
+    - set_hosts-config
+
+
+#- name: 安装必要的yum 包
+#  package:
+#    name: "{{ package_list }}"
+#    state: "{{ package_state | default(parent)}}"
+#  when: ansible_pkg_mgr | lower  == "yum"
+#  tags:
+#    - set_hosts-config
+#  
+
+- name: ssh key 免秘钥登录设置
+  include_tasks: authorized_keys.yml
+  tags:
+    - set_hosts-config
+    - set_ssh
+
+
+- name: 设置root nofile为 65536
+  lineinfile:
+      dest: /etc/security/limits.d/20-nproc.conf
+      regexp: "root.*?nofile" 
+      line: "root     -      nofile     65536"
+
+
+- name: 设置其它用户的nofile
+  template:
+    src: "ambari.conf.j2"
+    dest: "/etc/security/limits.d/{{ exce_ambari_user_name }}.conf"
+    mode: "6440"
+    owner: "root"
+    group: "root"
+  when: exce_ambari_user_name != "root"
+  
+
+
+- name: 禁用 防火墙
+  service:
+    name: firewalld
+    enabled: no
+    state: "stopped"
+  register: _stop
+  until: _stop is success
+  retries: 5
+  delay: 2
+  when: 
+     - ansible_distribution | lower == "centos"  or ansible_distribution | lower == "redhat" 
+     - ansible_distribution_major_version == "7"
+
+- name: 禁用 防火墙
+  service:
+    name: iptables
+    enabled: no
+    state: "stopped"
+  register: _stop
+  until: _stop is success
+  retries: 5
+  delay: 2
+  when: 
+     - ansible_distribution | lower == "centos"  or ansible_distribution | lower == "redhat" 
+     - ansible_distribution_major_version == "6"
+
+- name: 禁用其它服务
+  service:
+    name: "{{ item }}"
+    enabled: no
+    state: "stopped"
+  failed_when: false
+  with_items: "{{ disable_servers }}"
+  register: _stop
+  until: _stop is success
+  retries: 5
+  delay: 2
+
+
+- name: 检测selinux 的状态
+  command: getenforce
+  register: selinuxstatus
+  changed_when: false
+  failed_when: false
+  check_mode: no
+
+- name: 禁用Selinux 
+  selinux:
+    state: disabled
+  when:
+    - selinuxstatus.stdout != 'Disabled'
+  notify: 
+     - reboot system 
+
+
+- name: 启动ntpd
+  service:
+     name: "ntpd"
+     state: restarted
+     enabled: yes
+  tags:
+     - ntp_start
+
+- name: 禁用IPv6
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: "{{ item.set|default('yes') }}"
+    state: "{{ item.state|default('present') }}"
+    reload: "{{ item.reload|default('yes') }}"
+  failed_when: false
+  with_items: "{{ IPV6_options }}"
+
+- name: 设置/proc/sys/vm/swappiness 最大值为 10
+  sysctl:
+    name: "vm.swappiness"
+    value: "10"
+    sysctl_set: "yes"
+    state: present
+    reload: "yes"
+  failed_when: false
+  tags:
+   - set_swap
+
+- name: 禁用透明大页
+  template:
+    src: "rc.local.j2"
+    dest: "/etc/rc.d/rc.local"
+    owner: root
+    group: root
+    mode: 0755
+    backup: "yes"
+  tags:
+    - set_hub

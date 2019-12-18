@@ -1,0 +1,15 @@
+---
+- name: 主机基本设置
+  hosts: test
+  gather_facts: "{{ set_gather_facts | default(True) }}"
+  user: root
+  tasks:
+     - name: 禁用IPv6
+       sysctl:
+         name: "{{ item.key }}"
+         value: "{{ item.value }}"
+         sysctl_set: "{{ item.set|default('yes') }}"
+         state: "{{ item.state|default('present') }}"
+         reload: "{{ item.reload|default('yes') }}"
+       failed_when: false
+       with_items: "{{ tuned_linux_kernel }}"

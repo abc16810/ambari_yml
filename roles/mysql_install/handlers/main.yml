@@ -1,0 +1,17 @@
+---
+# handlers file for mysql_install
+#
+#
+- name: Reload the systemd daemon
+  systemd:
+    daemon_reload: yes
+    name: mysqld
+    enabled: "yes"
+
+
+- name: 重启mysql 
+  service: 
+     name: mysqld
+     state: restarted 
+     enabled: yes
+  listen: Restart mysql

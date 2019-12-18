@@ -1,0 +1,10 @@
+#  {{ ansible_managed }}
+#
+[HDP-UTILS]
+name={{ item.repo }}
+baseurl=http://{{ inventory_hostname }}/{{ item.repo }}/centos7/1.1.0.22
+gpgcheck=0
+gpgkey=http://{{ inventory_hostname }}/{{ item.repo }}/centos7/1.1.0.22/RPM-GPG-KEY/RPM-GPG-KEY-Jenkins
+enabled=1
+priority=1
+

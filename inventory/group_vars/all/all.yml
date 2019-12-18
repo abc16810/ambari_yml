@@ -1,0 +1,146 @@
+---
+
+#重新设置主机名
+set_hosts: yes
+
+
+#设置配置hosts文件
+set_host_manage_hosts_file: true
+
+
+## 每个节点必要的安装包
+package_list:
+     - libselinux-python
+     - ntp
+     - openssh-clients
+     - curl
+     - rpm
+     - tar
+     - unzip
+     - wget
+     - epel-release
+     - vim
+     - net-tools
+     - MySQL-python
+     - lsof
+
+
+package_state: "latest"
+
+
+
+##最低的内核版本(最新7.6)
+hadoop_host_required_kernel: 3.10.0-957.21.3.el7.x86_64 
+
+
+## 执行ambari的用户 如果不指定则为root
+exce_ambari_user_name: ambari
+exce_ambari_user_home: "/home/{{ exce_ambari_user_name }}"
+
+
+
+## mysql
+install_mysql_method: local     
+install_mysql_host: "{{ groups['deployment_host'] is defined and groups['deployment_host'] | length == 1 }}"
+mysql_root_user: root
+mysql_root_password: 'xxxx'
+mysql_var_run_socket: "/var/lib/mysql/mysql.sock"
+mysql_max_connections: 500
+mysql_wait_timeout: 3600
+mysql_max_heap_table_size: 32M
+mysql_tmp_table_size: 32M
+mysql_file_limits: 5000
+mysql_innodb_log_file_size: 1024M
+mysql_innodb_buffer_pool_size: 1024M
+mysql_innodb_log_buffer_size: 128M
+
+## 移除mariadb client
+mysql_remove_packages:
+  - mariadb-common
+  - mariadb-config
+  - mariadb-server
+### 安装包
+mysql_install_local_packages:
+  - mysql-community-common-5.7.24-1.el7.x86_64.rpm 
+  - mysql-community-libs-5.7.24-1.el7.x86_64.rpm
+  - mysql-community-libs-compat-5.7.24-1.el7.x86_64.rpm
+  - mysql-community-client-5.7.24-1.el7.x86_64.rpm 
+  - mysql-community-server-5.7.24-1.el7.x86_64.rpm
+  - mysql-community-devel-5.7.24-1.el7.x86_64.rpm
+
+
+
+### repo
+web_server: apache
+web_service_name: httpd
+web_server_packges:
+  - httpd
+  - yum-utils
+  - createrepo
+  - unzip
+  - mysql-connector-java
+  - openssl
+
+apache_default_sites:
+  - "/etc/httpd/conf.d/userdir.conf"
+  - "/etc/httpd/conf.d/welcome.conf"
+  - "/etc/httpd/conf.d/ssl.conf"
+
+####Hadoop 离线包
+hadoop_local_packges:
+  - { src: "HDP-UTILS-1.1.0.22-centos7.tar.gz", dest: "", repo: "HDP-UTILS" }
+  - { src: "ambari-2.6.2.2-centos7.tar.gz", dest: "", repo: "ambari" }
+  - { src: "HDP-2.6.5.0-centos7-rpm.tar.gz", dest: "", repo: "HDP"}
+  - { src: "HDP-GPL-2.6.5.0-centos7-gpl.tar.gz", dest: "", repo: "HDP-GPL"}
+
+hadoop_local_packges_name: >-
+  {% set _var = [] -%}
+  {% for name in hadoop_local_packges -%}
+  {% set _addr = name['src'] -%}
+  {% if _var.append(_addr) %}{% endif -%}
+  {% endfor -%}
+  {{ _var  }}
+
+
+
+#### 必要是数据库
+database_list: 
+   ambari:
+      user: 'ambari'
+      passwd: 'Ambari_123'
+      host: '%'
+   hive:
+      user: 'hive'
+      passwd: 'Hive_123'
+      host: '%'
+
+
+##jdk
+jdk_file: "jdk-8u161-linux-x64.rpm"
+install_path: "/usr/java/jdk1.8.0_161"
+
+# 禁用IPv6
+IPV6_options:
+   - { key: 'net.ipv6.conf.all.disable_ipv6', value: 1 }
+   - { key: 'net.ipv6.conf.default.disable_ipv6', value: 1 }
+
+# 禁用不必要的服务
+disable_servers:
+     - bluetooth
+     - cups
+     - ip6tables
+     - postfix
+
+## 优化linux 内核
+tuned_linux_kernel:
+ - {key: 'net.ipv4.tcp_timestamps', value: 0} # 禁用TCP时间戳以提高CPU利用率(这是一个可选参数，将取决于您的NIC供应商) 
+ - {key: 'net.ipv4.tcp_sack', value: 1} # 启用TCP sack来提高吞吐量 
+ - {key: 'net.core.netdev_max_backlog', value: 250000} #增加处理器输入队列的最大长度 默认1000
+ - {key: 'net.core.rmem_max', value: 4194304}  #增加TCP最大和默认缓冲区大小使用(4m)
+ - {key: 'net.core.wmem_max', value: 4194304}  #增加TCP最大和默认缓冲区大小使用
+ - {key: 'net.core.rmem_default', value: 4194304}  #增加TCP最大和默认缓冲区大小使用
+ - {key: 'net.core.wmem_default', value: 4194304}  #增加TCP最大和默认缓冲区大小使用
+ - {key: 'net.ipv4.tcp_rmem', value: 4096       87380   4194304}  #增加内存阈值以防止丢包 第1个值为最小值，第2个值为默认值（会被rmem_default覆盖），第3个值为最大值。
+ - {key: 'net.ipv4.tcp_wmem', value: 4096       65536   4194304}  #增加内存阈值以防止丢包 第1个值为最小值，第2个值为默认值（会被rmem_default覆盖），第3个值为最大值。
+ - {key: 'net.ipv4.tcp_low_latency', value: 1} # 为TCP启用低延迟模式 
+ - {key: 'net.ipv4.tcp_adv_win_scale', value: 1} #将套接字缓冲区设置为在TCP窗口大小和应用程序缓冲区之间平均分配

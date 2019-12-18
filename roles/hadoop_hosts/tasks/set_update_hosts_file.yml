@@ -1,0 +1,26 @@
+---
+- name: 本地生成主机文件hosts的模板脚本
+  template:
+    src: "set-host-hostfile-setup.sh.j2"
+    dest: "/var/tmp/set-host-hostfile-setup.sh"
+    mode: "0755"
+  delegate_to: localhost
+  run_once: true
+  vars:
+    ansible_python_interpreter: "/usr/bin/python"
+
+- name: 复制模板化的hosts脚本到每个主机
+  template:
+    src: "/var/tmp/set-host-hostfile-setup.sh"
+    dest: "/usr/local/bin/set-host-hostfile-setup.sh"
+    mode: "0755"
+
+- name: 注册hosts文件的属性
+  stat:
+    path: /etc/hosts
+  register: stat_hosts
+
+- name: 更新hosts文件
+  command: "/usr/local/bin/set-host-hostfile-setup.sh"
+  register: update_hosts
+  changed_when: not stat_hosts.stat.exists or stat_hosts.stat.checksum | string != update_hosts.stdout | string
